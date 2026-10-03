@@ -14,6 +14,10 @@ import (
 
 var format = flag.String("format", "json", "output format: json or text")
 var userAgent = flag.String("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36", "override the User-Agent sent to the Discord REST API")
+var mediaDir = flag.String("media-dir", "", "if set, download message attachments into this directory")
+var mediaMaxBytes = flag.Int64("media-max-bytes", 50<<20, "skip attachments larger than this many bytes")
+
+var media *mediaFetcher
 
 func main() {
 	flag.Parse()
@@ -27,6 +31,14 @@ func main() {
 	token := os.Getenv("DISCORD_TOKEN")
 	if token == "" {
 		log.Fatal("DISCORD_TOKEN environment variable is required")
+	}
+
+	if *mediaDir != "" {
+		var err error
+		media, err = newMediaFetcher(*mediaDir, *mediaMaxBytes)
+		if err != nil {
+			log.Fatalf("error setting up media dir: %v", err)
+		}
 	}
 
 	dg, err := discordgo.New(token)
@@ -58,6 +70,10 @@ func main() {
 }
 
 func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
+	if media != nil {
+		media.fetchAttachments(m.Message)
+	}
+
 	channel := m.ChannelID
 	if ch, err := s.State.Channel(m.ChannelID); err == nil {
 		channel = ch.Name
